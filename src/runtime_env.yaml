@@ -1,0 +1,1 @@
+env_vars: {MODEL_PATH: "/home/ankur/dev/apps/ML/learn/ray/multi-model-serv/sharded-gpt-j-6B"}
