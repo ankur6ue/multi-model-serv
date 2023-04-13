@@ -81,10 +81,61 @@ RAY_task_events_max_num_task_in_gcs=500 ray start --head --dashboard-host=0.0.0.
 ```
 ## Payload
 ## System deployment
+ I've tested this system on my personal computer equipped with 20 cores, 32GB RAM and 2 1080 Ti GPUs. Each GPU has about 11GB of usable RAM. The system may not deploy if your workstation lacks sufficient HW resources. One good way to verify this is to try performing inference on the [sharded-gpt-j-6B](https://huggingface.co/sgugger/sharded-gpt-j-6B/tree/main) model outside of Ray. You may also try using a smaller model that your HW can support. 
+
+The generate text  deployment uses the [sharded-gpt-j-6B](https://huggingface.co/sgugger/sharded-gpt-j-6B/tree/main). You should download the model files and place it somewhere on your computer. The directory containing the model files is provided to the deployment as an environment variable. This environment variable is specified as a [runtime_env](https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#id1) in the runtime_env.yaml file. You should update this file with the directory where you place the model. 
 ### Without docker
+1. Clone this repo
+2. Install python dependencies in your conda environment (see requirements.txt). 
+3. Start redis server on port 6380
+```python
+redis-server --port 6380 
+```
+4. Download the sharded-gpt-j-6B model and update the runtime_env.yaml file 
+5. Deploy the generate deployment using Ray serve CLI
+```python
+cd src
+serve run generate:generate --runtime-env ../runtime_env.yaml
+```
 ### Using docker
+Note that building a docker image with Ray, GPU support and Pytorch takes a lot of disk space. If you don't have sufficient disk space in your root partition but have unused partitions on your workstation, you could mount a new directory on that partition and bind mount your /var/lib/docker to this directory. See [this](https://www.ibm.com/docs/en/cloud-private/3.1.1?topic=pyci-specifying-default-docker-storage-directory-by-using-bind-mount) for instructions
+1.   Install GPU support for docker. Follow instructions (here) [https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html]
+2. Clone this repo
+3. Build the application docker image. You can name the image to whatever you'd like
+    ```python
+    docker build -t ray2.3_llm .
+    ```
+4. Run a container based on this image
+```python
+docker run --name llm_demo \
+-p 0.0.0.0:8000:8000 # address of the serve deployment \
+-p 0.0.0.0:8265:8265 # Ray dashboard address \
+-p 0.0.0.0:8001:8001 # address of the metrics server \
+-it --gpus all # make all system GPUs available to the docker container \
+-v /path/to/sharded-gpt-j-6B:/home/ray/app/models:ro # volume map the host directory where the model is located to a path inside the docker container. This avoids copying the model data into the image \
+--rm  # will remove the container upon exit \
+ray2.3_llm /bin/bash /home/ray/app/src/startup_script.sh 
+```
+startup_script.sh does the following:
+* Starts redis server on port 6380, because port 6379 is used by Ray's GCS
+* Start Ray head node
+* Start the metrics server (port 8001)
+* Start the generate deployment (port 8000)
 
-Currently the system uses Contrastive Search decoding strategy during text generation. Upcoming features include making the decoding strategy and the number of tokens generated configurable by the user. 
-
+#### Testing the deployment
+1. Verify the Tokenize, Validator and Generate deployment are running using the Ray dashboard
+![](img/ray_dashboard)
+2. Send a curl request to the serve endpoint (localhost:8000 by default)
+    ```python
+    curl -X POST 127.0.0.1:8000/run -H "Content-Type: application/json" -d '{"data": "Roman emperor Trajan ruled from", "num_tokens": 50, "decoding_strategy": "multinomial"}'
+    ```
+    You should receive back a valid response. The [decoding_strategy](https://huggingface.co/docs/transformers/generation_strategies#contrastive-search) can be "contrastive", "multinomial sampling" or "beam search". The default is "contrastive". The default for number of tokens is 50. 
+3. [OPTIONAL] You can test the metrics server using the following curl command
+    ```python
+    curl -X GET 127.0.0.1:8001/metrics
+    ```
+   You'll receive back a number indicating the number of requests waiting in the queue to be served
+3. You can also run the *test_client.py* test script. This script sends a number of POST requests to the ray serve deployment and records the time when each request is sent and response received, along with the response status code and content. The rate limitation for the *run* method on the *generate* deployment is set to 10 requests every 60 seconds. The script sends 15 requests in 20 seconds, so the last 5 requests will receive a 429 response code. The timeout is set by default to 30 seconds, and because the system can only process 1 request at a time due to HW limitations, some requests will timeout, with a 408 response code.
+## UI
 ## System Architecture
 ![](img/system_architecture.png)

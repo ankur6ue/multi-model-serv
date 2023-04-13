@@ -83,13 +83,15 @@ class Generate:
         inputs = tokens.to(0)
         # contrastive search, other options are beam search, multinomial search and combinations. It is slower
         # than beam search, but demonstrates superior results for generating non-repetitive yet coherent long outputs
+
         if dec_strategy == 'contrastive':
             output = self.model.generate(inputs["input_ids"], penalty_alpha=0.6, top_k=4, max_new_tokens=num_tokens)
-        if dec_strategy == 'multinomial sampling':
+        elif dec_strategy == 'multinomial sampling':
             output = self.model.generate(inputs["input_ids"], do_sample=True,  max_new_tokens=num_tokens)
-        if dec_strategy == 'beam search':
+        elif dec_strategy == 'beam search':
             output = self.model.generate(inputs["input_ids"], num_beams=4,  max_new_tokens=num_tokens)
-
+        else: # default to contrastive
+            output = self.model.generate(inputs["input_ids"], penalty_alpha=0.6, top_k=4, max_new_tokens=num_tokens)
         return output[0].tolist()
 
 #    async def __call__(self, http_request: Request) -> str:
@@ -106,6 +108,7 @@ class Generate:
         # 2. The number of tokens the llm will be asked to generate
         num_tokens_ = req_json.get('num_tokens')
         num_tokens: int = 50 if num_tokens_ is None else num_tokens_
+        # TODO: validation for max number of tokens..
         # 3. The decoding strategy: contrastive, multinomial, beam search
         dec_strat_ = req_json.get('decoding_strategy')
         dec_strat: str = 'contrastive' if dec_strat_ is None else dec_strat_
@@ -115,9 +118,12 @@ class Generate:
         is_valid = await is_valid_ref
         if not is_valid:
             raise HTTPException(status_code=400, detail="Invalid prompt")
+        # Convert prompt into tokens
         encoder_ref = await self.tokenizer.encode.remote(prompt)
         tokens = await encoder_ref
+        # Generate text
         completed_tokens = self.complete(tokens, num_tokens, dec_strat)
+        # Decode output tokens into words
         decoder_ref = await self.tokenizer.decode.remote(completed_tokens)
         decoded_text = await decoder_ref
         print(decoded_text)
