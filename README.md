@@ -35,7 +35,7 @@ async def startup():
     await FastAPILimiter.init(redis)
 
 ```
-This requires manually creating the FastAPI app object, rather than relying on Serve to do so internally. Fortunately, Serve provides a more explicit [integration with FastAPI](https://docs.ray.io/en/latest/serve/http-guide.html) integration with FastAPI, allowing you to define a Serve deployment using the @serve.ingress decorator that wraps a FastAPI app with its full range of features. A Serve deployment can be created like this:
+This requires manually creating the FastAPI app object, rather than relying on Serve to do so internally. Fortunately, Serve provides a more explicit [integration with FastAPI](https://docs.ray.io/en/latest/serve/http-guide.html), allowing you to define a Serve deployment using the @serve.ingress decorator that wraps a FastAPI app with its full range of features. A Serve deployment can be created like this:
 ```python
 @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 2.0},  autoscaling_config={
         "min_replicas": 1,
@@ -142,3 +142,5 @@ startup_script.sh does the following:
 
 You can also run the *test_client.py* test script. This script sends a number of POST requests to the ray serve deployment and records the time when each request is sent and response received, along with the response status code and content. The rate limitation for the *run* method on the *generate* deployment is set to 10 requests every 60 seconds. The script sends 15 requests in 20 seconds, so the last 5 requests will receive a 429 response code. The timeout is set by default to 30 seconds, and because the system can only process 1 request at a time due to HW limitations, some requests will timeout, with a 408 response code.
 
+## System Architecture
+![](img/system_architecture.png)
